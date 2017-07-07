@@ -1,0 +1,174 @@
+#!/bin/bash
+##############################################
+# Written by Kosala Atapattu kosala@kosala.net
+# All right reserved. Distributed under GPL v2,
+# allowed to modify and redistribute, WETF.
+##############################################
+
+############ Configurables ###################
+
+vault_path=~/vault
+password_path=$vault_path/passwd
+keystore_path=$vautt_path/keystore
+
+rsa_key_pub=$keystore_path/id_rsa.pem
+rsa_key_priv=$keystore_path/id_rsa
+
+############ Do not change below this line ###
+
+[ -d $vault_path ] || mkdir - $vault_path
+
+############ Set the Copy Command ############
+
+case $(uname) in
+Linux)
+        COPY_CMD='xsel --clipboard --input'
+        ;;
+Darwin)
+        COPY_CMD=pbcopy
+        ;;
+*)
+        errormsg "ERROR: Unsupported OS!!"
+        ;;
+esac 
+
+#############################################
+genkeys () {
+	[ -f $rsa_key_priv ] && {
+		[ -f $rsa_key_pub ] || {
+			openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+		}
+	} || {
+		echo "Please enter a passphrase to encrypt your key."
+		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>&1 >/dev/null 
+		echo "Please enter the same passphrase to generate the public key."
+		oopenssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+	}
+}
+
+# this subroutine will sync the vault files with recovery commands.
+syncvault () {
+	echo $1
+}
+
+printmsg () {
+        echo $1
+}
+
+errormsg () {
+        echo $1 1>&2
+}
+
+usage () {
+        printmsg "Usage: $0 [ add | delete | new [ name ] ] | [ list | sync ]"
+        printmsg
+        printmsg "To retrieve the password, type in the name [used in the above command] on the command prompt."
+        printmsg
+        printmsg
+}
+
+readpassword () {
+	read -p "Password: " -s passwd1
+        echo
+        read -p "Reenter the password: " -s passwd2
+        echo 
+        [ "x$passwd1" == "x$passwd2" ] && {
+		echo $passwd1
+	} || {
+		errormsg "ERROR: passwords do not match."
+		exit
+	}
+}
+
+newpassword () {
+	openssl rand -base64 8 | cut -d"=" -f 1 
+}
+
+add2vault () {
+	vault_file=$1
+	passwd3=$2
+	[ -f $password_path/$vault_file ] && {
+		errormsg "ERROR: A file already exist in the vault under the same name."
+		exit
+	}
+	echo $passwd3 | openssl rsautl -encrypt -pubin -inkey $rsa_key_pub | openssl base64 -e > $password_path/$vault_file
+	[ $? -ne 0 ] && {
+		printmsg "ERROR: Failed to add to the vault."
+		exit
+	} || {
+		ln -s $0 /usr/local/bin/readpass-${vault_file}
+	}
+}
+
+deletefromvault () {
+        vault_file=$1
+        [ -f $password_path/$vault_file ] && {
+                rm -fr $password_path/$vault_file 
+                rm -fr /usr/local/bin/readpass-${vault_file}
+        } || {
+                errormsg "ERROR: file not fount in the vault."
+                exit
+        }
+}
+
+readfromvault () {
+        vault_file=$1
+        [ -f $password_path/$vault_file ] && {
+                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv | $COPY_CMD
+        } || {
+                errormsg "ERROR: unable to find file in the vault!!!"
+                [ -x /usr/local/bin/$vault_file ] && {
+                        printmsg "INFO: Removing the link file."
+                        [ -L /usr/local/bin/$vault_file ] && rm -f /usr/local/bin/$vault_file
+                        printmsg "INFO: File removed!!!."
+                } || {
+                        printmsg "INFO: Link file not faund."
+                }
+                exit
+        }
+}
+
+listfromvault () {
+        for file in $keystore_path/*
+        do
+                basename $file
+        done
+}
+
+[ x$1 == "x" ] && {
+        [ -L $0 ] && {
+                oper=read
+        } || {
+                usage
+                exit
+        }
+} || {
+        oper=$1
+        [ "x$2" == "x" ] && [ "x$oper" != "xlist" ] && {
+                printmsg "ERROR: name required."
+                usage
+                exit
+        } || {
+                name=$2
+        }
+}
+
+case $oper in
+add)
+	add2vault $name $(readpassword)
+        ;;
+new)
+	add2vault $name $(newpassword)
+        ;;
+delete)
+        deletefromvault $name
+        ;;
+read)
+        readfromvault $(basename $0)
+        ;;
+list) 
+        listfromvault
+        ;;
+*)
+        usage
+esac
