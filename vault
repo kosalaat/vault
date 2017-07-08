@@ -56,10 +56,14 @@ syncvault () {
 	done
 }
 
-loadpubkey () {
+importpubkey () {
 	user=$1
 	key=$2
 	cp $2 $keystore_path/aux-${1}.pub
+}
+
+exportpubkey () {
+	cp $rsa_pub_key ./$(uname -n)-${USER}
 }
 
 listpubkey () {
@@ -68,6 +72,26 @@ listpubkey () {
 		echo $(basename $file | sed 's/^aux-//')
 	done
 }
+
+transferkeysto () {
+	key=$1
+	for file in $keystore_path/*
+	do 
+		readfromvault $file | _encrypt $key > ${key}-${file}
+	done
+}
+
+transferkeysfrom () {
+	file=$1
+	[ -f ${keystore_path}/${file} ] ||  cp $file $keystore_path/. && errormsg "Password already exisit."
+
+	readfromvault $file 2>&1 >/dev/null
+	[ $? -eq 0 ] || {
+		deletefromvault $file
+	}
+}
+
+
 
 printmsg () {
         echo $1
@@ -99,7 +123,19 @@ readpassword () {
 }
 
 newpassword () {
-	openssl rand -base64 8 | cut -d"=" -f 1 
+	openssl rand -base64 10 | cut -d"=" -f 1 
+}
+
+_encrypt () {
+	[ -z $1 ] && key=$rsa_key_pub || key=$1
+
+	read -e | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
+	[ $? -ne 0 ] && {
+		printmsg "ERROR: Failed to add to the vault."
+		exit
+	} || {
+		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
+	}
 }
 
 add2vault () {
@@ -109,13 +145,7 @@ add2vault () {
 		errormsg "ERROR: A file already exist in the vault under the same name."
 		exit
 	}
-	echo $passwd3 | openssl rsautl -encrypt -pubin -inkey $rsa_key_pub | openssl base64 -e > $password_path/$vault_file
-	[ $? -ne 0 ] && {
-		printmsg "ERROR: Failed to add to the vault."
-		exit
-	} || {
-		ln -s $0 /usr/local/bin/readpass-${vault_file}
-	}
+	echo $passwd3 | _encrypt > $password_path/$vault_file
 }
 
 deletefromvault () {
@@ -132,7 +162,7 @@ deletefromvault () {
 readfromvault () {
         vault_file=$1
         [ -f $password_path/$vault_file ] && {
-                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv | $COPY_CMD
+                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv 
         } || {
                 errormsg "ERROR: unable to find file in the vault!!!"
                 [ -x /usr/local/bin/$vault_file ] && {
@@ -182,7 +212,7 @@ delete)
         deletefromvault $name
         ;;
 read)
-        readfromvault $(basename $0)
+        readfromvault $(basename $0) | $COPY_CMD
         ;;
 list) 
         listfromvault
