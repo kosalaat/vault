@@ -48,7 +48,25 @@ genkeys () {
 
 # this subroutine will sync the vault files with recovery commands.
 syncvault () {
-	echo $1
+	for file in $password_path/*
+	do 
+		[ -L /usr/local/bin/readpass-${file} ] || {
+			ln -s $0 /usr/local/bin/readpass-${file} 
+		}
+	done
+}
+
+loadpubkey () {
+	user=$1
+	key=$2
+	cp $2 $keystore_path/aux-${1}.pub
+}
+
+listpubkey () {
+	for file in $keystore_path/*
+	do 
+		echo $(basename $file | sed 's/^aux-//')
+	done
 }
 
 printmsg () {
