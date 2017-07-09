@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 ##############################################
 # Written by Kosala Atapattu kosala@kosala.net
 # All right reserved. Distributed under GPL v2,
@@ -9,14 +9,16 @@
 
 vault_path=~/vault
 password_path=$vault_path/passwd
-keystore_path=$vautt_path/keystore
+keystore_path=$vault_path/keystore
 
-rsa_key_pub=$keystore_path/id_rsa.pem
-rsa_key_priv=$keystore_path/id_rsa
+rsa_key_pub=$keystore_path/mykey.pub
+rsa_key_priv=$keystore_path/mykey.pem
 
 ############ Do not change below this line ###
 
-[ -d $vault_path ] || mkdir - $vault_path
+[ -d $keystore_path ] || mkdir -p $keystore_path
+
+[ -d $password_path ] || mkdir -p $password_path
 
 ############ Set the Copy Command ############
 
@@ -39,10 +41,10 @@ genkeys () {
 			openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
 		}
 	} || {
-		echo "Please enter a passphrase to encrypt your key."
-		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>&1 >/dev/null 
-		echo "Please enter the same passphrase to generate the public key."
-		oopenssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+		printmsg "Please enter a passphrase to encrypt your key."
+		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>/dev/null 
+		printmsg "Please enter the same passphrase to generate the public key."
+		openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
 	}
 }
 
@@ -57,13 +59,15 @@ syncvault () {
 }
 
 importpubkey () {
-	user=$1
-	key=$2
-	cp $2 $keystore_path/aux-${1}.pub
+	key=$1
+	cp $1 $keystore_path/.
 }
 
 exportpubkey () {
-	cp $rsa_pub_key ./$(uname -n)-${USER}
+	cp $rsa_pub_key ./$(uname -n)-${USER}.pub
+	[ $? -eq 0 ] && {
+		printmsg "Public key file created on $(uname -n)-${USER}.pub"
+	}
 }
 
 listpubkey () {
@@ -77,7 +81,7 @@ transferkeysto () {
 	key=$1
 	for file in $keystore_path/*
 	do 
-		readfromvault $file | _encrypt $key > ${key}-${file}
+		readfromvault ${file} | _encrypt $key > ${key}-${file}
 	done
 }
 
@@ -94,15 +98,23 @@ transferkeysfrom () {
 
 
 printmsg () {
-        echo $1
+        echo -e "\033[32m$1\033[0m"
 }
 
 errormsg () {
-        echo $1 1>&2
+        echo -e "\033[31m$1 \033[0m" 1>&2
 }
 
 usage () {
-        printmsg "Usage: $0 [ add | delete | new [ name ] ] | [ list | sync ]"
+        printmsg "Usage: $0  add name"
+        printmsg "Usage: $0  new name"
+        printmsg "Usage: $0  delete name"
+        printmsg "Usage: $0  list" 
+        printmsg "Usage: $0  sync"
+        printmsg "Usage: $0  share user"
+        printmsg "Usage: $0  importkey file"
+        printmsg "Usage: $0  exportkey"
+        printmsg "Usage: $0  listkey"
         printmsg
         printmsg "To retrieve the password, type in the name [used in the above command] on the command prompt."
         printmsg
@@ -110,10 +122,15 @@ usage () {
 }
 
 readpassword () {
-	read -p "Password: " -s passwd1
+	read -p "Enter the password: " -s passwd1
         echo
-        read -p "Reenter the password: " -s passwd2
+	[ -z $passwd1 ] && {
+		errormsg "ERROR: password cannot be empty"
+		exit
+	}
+        read -p "Repeat the password: " -s passwd2
         echo 
+
         [ "x$passwd1" == "x$passwd2" ] && {
 		echo $passwd1
 	} || {
@@ -141,11 +158,14 @@ _encrypt () {
 add2vault () {
 	vault_file=$1
 	passwd3=$2
+
+	[ -z $passwd3 ] && exit
+
 	[ -f $password_path/$vault_file ] && {
 		errormsg "ERROR: A file already exist in the vault under the same name."
 		exit
 	}
-	echo $passwd3 | _encrypt > $password_path/$vault_file
+	echo $passwd3 | _encrypt  > $password_path/$vault_file
 }
 
 deletefromvault () {
@@ -177,11 +197,14 @@ readfromvault () {
 }
 
 listfromvault () {
-        for file in $keystore_path/*
+        for file in $password_path/*
         do
                 basename $file
         done
 }
+
+# generate the keys if they do not exists
+genkeys
 
 [ x$1 == "x" ] && {
         [ -L $0 ] && {
@@ -192,31 +215,70 @@ listfromvault () {
         }
 } || {
         oper=$1
-        [ "x$2" == "x" ] && [ "x$oper" != "xlist" ] && {
-                printmsg "ERROR: name required."
-                usage
-                exit
-        } || {
-                name=$2
-        }
+	name=$2
 }
 
 case $oper in
 add)
-	add2vault $name $(readpassword)
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 
+		(add2vault $name $(readpassword))
+	}
         ;;
-new)
-	add2vault $name $(newpassword)
+new)	
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || {
+		add2vault $name $(newpassword)
+	}
         ;;
 delete)
-        deletefromvault $name
+        [ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 
+		deletefromvault $name
+	}
         ;;
 read)
-        readfromvault $(basename $0) | $COPY_CMD
+        readfromvault $(basename $0 | sed 's/^readpass-//') | $COPY_CMD
         ;;
 list) 
         listfromvault
         ;;
+share)
+        [ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 	
+		transferkeysto $name
+	}
+	;;
+importkey)
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 	
+		importpubkey $name
+	}
+	;;
+exportkey)
+	exportpubkey
+	;;
+listkey)
+	listpubkey
+	;;
+sync)
+	syncvault
+	;;	
 *)
         usage
 esac
