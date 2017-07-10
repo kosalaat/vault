@@ -210,10 +210,15 @@ listpubkey () {
 
 transferkeysto () {
 	key=$1
+	printmsg "Enter the pass phrase: "
+	read -s  passphrase
+
+	[ -d $key ] || mkdir $key
+
 	for file in $password_path/*
 	do
 		f=$(basename $file)
-		readfromvault ${f} | _encrypt $keystore_path/aux-$key > ${key}-$f
+		readfromvault ${f} $passphrase | _encrypt $keystore_path/aux-$key > ${key}/$f
 	done
 }
 
@@ -283,8 +288,6 @@ _encrypt () {
 	[ $? -ne 0 ] && {
 		printmsg "ERROR: Failed to add to the vault."
 		exit
-	} || {
-		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
 	}
 }
 
@@ -300,6 +303,13 @@ add2vault () {
 		exit
 	}
 	echo $passwd3 | _encrypt $rsa_key_pub > $password_path/$vault_file
+
+	[ -s $password_path/$vault_file ] || {
+		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
+	} && {
+		errormsg "ERROR: creating the vault file."
+		exit
+	}
 }
 
 deletefromvault () {
@@ -315,8 +325,10 @@ deletefromvault () {
 
 readfromvault () {
         vault_file=$1
+	[ -z $2 ] || passphrase=" -passin pass:$2 "
+
         [ -f $password_path/$vault_file ] && {
-                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv 
+                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv $passphrase
         } || {
                 errormsg "ERROR: unable to find file in the vault!!!"
                 [ -x /usr/local/bin/$vault_file ] && {
