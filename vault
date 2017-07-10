@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash 
 ##############################################
 # Written by Kosala Atapattu kosala@kosala.net
 # All right reserved. Distributed under GPL v2,
@@ -15,6 +15,10 @@ rsa_key_pub=$keystore_path/mykey.pub
 rsa_key_priv=$keystore_path/mykey.pem
 
 ############ Do not change below this line ###
+_RED="\033[31m"
+_GREEN="\033[32m"
+_BOLD="\033[1m"
+_NORMAL="\033[0m"
 
 [ -d $keystore_path ] || mkdir -p $keystore_path
 
@@ -52,28 +56,30 @@ genkeys () {
 syncvault () {
 	for file in $password_path/*
 	do 
-		[ -L /usr/local/bin/readpass-${file} ] || {
-			ln -s $0 /usr/local/bin/readpass-${file} 
-		}
+		[ -z $test ] || {
+			 [ -L /usr/local/bin/readpass-$(basename ${test}) ] || {
+				ln -s $0 /usr/local/bin/readpass-$(basename ${file})
+			}
+		}	
 	done
 }
 
 importpubkey () {
 	key=$1
-	cp $1 $keystore_path/.
+	[ -f $key ] && cp $1 $keystore_path/.
 }
 
 exportpubkey () {
-	cp $rsa_pub_key ./$(uname -n)-${USER}.pub
+	cp $rsa_key_pub ./$(uname -n)-${USER}.pub
 	[ $? -eq 0 ] && {
-		printmsg "Public key file created on $(uname -n)-${USER}.pub"
+		printmsg "Public key file created on \033[1m $(uname -n)-${USER}.pub"
 	}
 }
 
 listpubkey () {
-	for file in $keystore_path/*
+	for file in $keystore_path/aux-*
 	do 
-		echo $(basename $file | sed 's/^aux-//')
+		[ -f $file ] && echo $(basename $file | sed 's/^aux-//')
 	done
 }
 
@@ -98,25 +104,27 @@ transferkeysfrom () {
 
 
 printmsg () {
-        echo -e "\033[32m$1\033[0m"
+        echo -e "${_GREEN}$1${_NORMAL}"
 }
 
 errormsg () {
-        echo -e "\033[31m$1 \033[0m" 1>&2
+        echo -e "${_RED}$1${_NORMAL} " 1>&2
 }
 
 usage () {
-        printmsg "Usage: $0  add name"
-        printmsg "Usage: $0  new name"
-        printmsg "Usage: $0  delete name"
-        printmsg "Usage: $0  list" 
-        printmsg "Usage: $0  sync"
-        printmsg "Usage: $0  share user"
-        printmsg "Usage: $0  importkey file"
-        printmsg "Usage: $0  exportkey"
-        printmsg "Usage: $0  listkey"
+        printmsg "Usage: "
+        printmsg "${_NORMAL}\t$0  init \t\t-${_GREEN}${_BOLD} Initialize the VAULT"
+        printmsg "${_NORMAL}\t$0  add name \t\t-${_GREEN}${_BOLD} Add a password to the VAULT"
+        printmsg "${_NORMAL}\t$0  new name \t\t-${_GREEN}${_BOLD} Generate a new password and store in the VAULT"
+        printmsg "${_NORMAL}\t$0  delete name \t\t-${_GREEN}${_BOLD} Delete the password from the VAULT"
+        printmsg "${_NORMAL}\t$0  list \t\t-${_GREEN}${_BOLD} List the password from the VAULT" 
+        printmsg "${_NORMAL}\t$0  sync \t\t-${_GREEN}${_BOLD} Sync the password VAULT with the readpass-COMMANDs"
+        printmsg "${_NORMAL}\t$0  share user \t\t-${_GREEN}${_BOLD} Share the password for another user (Complete Vault)"
+        printmsg "${_NORMAL}\t$0  importkey file \t\t-${_GREEN}${_BOLD} Import a public for a another user"
+        printmsg "${_NORMAL}\t$0  exportkey \t\t-${_GREEN}${_BOLD} Export your public key to be shared with another user"
+        printmsg "${_NORMAL}\t$0  listkey \t\t-${_GREEN}${_BOLD} List all the keys from the key store"
         printmsg
-        printmsg "To retrieve the password, type in the name [used in the above command] on the command prompt."
+        printmsg "To retrieve the password, type ${_BOLD}\"readpass-[name]\"${_NORMAL}${_GREEN} as the name used in the command in the command prompt."
         printmsg
         printmsg
 }
@@ -144,9 +152,10 @@ newpassword () {
 }
 
 _encrypt () {
-	[ -z $1 ] && key=$rsa_key_pub || key=$1
+	key=$1
 
-	read -e | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
+	read passwd4
+	echo $passwd4 | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
 	[ $? -ne 0 ] && {
 		printmsg "ERROR: Failed to add to the vault."
 		exit
@@ -154,6 +163,7 @@ _encrypt () {
 		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
 	}
 }
+
 
 add2vault () {
 	vault_file=$1
@@ -165,7 +175,7 @@ add2vault () {
 		errormsg "ERROR: A file already exist in the vault under the same name."
 		exit
 	}
-	echo $passwd3 | _encrypt  > $password_path/$vault_file
+	echo $passwd3 | _encrypt $rsa_key_pub > $password_path/$vault_file
 }
 
 deletefromvault () {
@@ -203,8 +213,6 @@ listfromvault () {
         done
 }
 
-# generate the keys if they do not exists
-genkeys
 
 [ x$1 == "x" ] && {
         [ -L $0 ] && {
@@ -278,7 +286,10 @@ listkey)
 	;;
 sync)
 	syncvault
-	;;	
+	;;
+init)
+	genkeys
+	;;
 *)
         usage
 esac
