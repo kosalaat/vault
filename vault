@@ -66,7 +66,17 @@ syncvault () {
 
 importpubkey () {
 	key=$1
-	[ -f $key ] && cp $1 $keystore_path/.
+	[ -f $key ] && {
+		[ -f $keystore_path/aux-$1 ] && {
+			errormsg "ERROR: the same public key file already exists."
+			exit
+		} || {
+       			cp $1 $keystore_path/aux-$1
+		}
+	} || {
+		errormsg "ERROR: the file $key does not exist."
+		exit
+	}
 }
 
 exportpubkey () {
