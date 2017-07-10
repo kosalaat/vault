@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash  -x
 ##############################################
 # Written by Kosala Atapattu kosala@kosala.net
 # All right reserved. Distributed under GPL v2,
@@ -96,8 +96,124 @@ listpubkey () {
 transferkeysto () {
 	key=$1
 	for file in $password_path/*
+	do
+		f=$(basename $file)
+		readfromvault ${f} | _encrypt $keystore_path/aux-$key > ${key}-$f
+	done
+}
+
+transferkeysfrom () {
+	file=$1
+	[ -f ${keystore_path}/${file} ] ||  cp $file $keystore_path/. && errormsg "Password already exisit."
+
+	readfromvault $file 2>&1 >/dev/null
+	[ $? -eq 0 ] || {
+		deletefromvault $file
+	}
+}
+
+
+#!/bin/bash  -x
+##############################################
+# Written by Kosala Atapattu kosala@kosala.net
+# All right reserved. Distributed under GPL v2,
+# allowed to modify and redistribute, WETF.
+##############################################
+
+############ Configurables ###################
+
+vault_path=~/vault
+password_path=$vault_path/passwd
+keystore_path=$vault_path/keystore
+
+rsa_key_pub=$keystore_path/mykey.pub
+rsa_key_priv=$keystore_path/mykey.pem
+
+############ Do not change below this line ###
+_RED="\033[31m"
+_GREEN="\033[32m"
+_BOLD="\033[1m"
+_NORMAL="\033[0m"
+
+[ -d $keystore_path ] || mkdir -p $keystore_path
+
+[ -d $password_path ] || mkdir -p $password_path
+
+############ Set the Copy Command ############
+
+case $(uname) in
+Linux)
+        COPY_CMD='xsel --clipboard --input'
+        ;;
+Darwin)
+        COPY_CMD=pbcopy
+        ;;
+*)
+        errormsg "ERROR: Unsupported OS!!"
+        ;;
+esac 
+
+#############################################
+genkeys () {
+	[ -f $rsa_key_priv ] && {
+		[ -f $rsa_key_pub ] || {
+			openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+		}
+	} || {
+		printmsg "Please enter a passphrase to encrypt your key."
+		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>/dev/null 
+		printmsg "Please enter the same passphrase to generate the public key."
+		openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+	}
+}
+
+# this subroutine will sync the vault files with recovery commands.
+syncvault () {
+	for file in $password_path/*
 	do 
-		readfromvault ${file} | _encrypt $keystore_path/aux-$key > ${key}-${file}
+		[ -z $test ] || {
+			 [ -L /usr/local/bin/readpass-$(basename ${test}) ] || {
+				ln -s $0 /usr/local/bin/readpass-$(basename ${file})
+			}
+		}	
+	done
+}
+
+importpubkey () {
+	key=$1
+	[ -f $key ] && {
+		[ -f $keystore_path/aux-$(basename $key) ] && {
+			errormsg "ERROR: the same public key file already exists."
+			exit
+		} || {
+			cp $key $keystore_path/aux-$(basename $key)
+		}
+	} || {
+		errormsg "ERROR: the file $key does not exist."
+		exit
+	}
+}
+
+exportpubkey () {
+	cp $rsa_key_pub ./$(uname -n)-${USER}.pub
+	[ $? -eq 0 ] && {
+		printmsg "Public key file created on \033[1m $(uname -n)-${USER}.pub"
+	}
+}
+
+listpubkey () {
+	for file in $keystore_path/aux-*
+	do 
+		[ -f $file ] && echo $(basename $file | sed 's/^aux-//')
+	done
+}
+
+transferkeysto () {
+	key=$1
+	for file in $password_path/*
+	do
+		f=$(basename $file)
+		readfromvault ${f} | _encrypt $keystore_path/aux-$key > ${key}-$f
 	done
 }
 
@@ -203,6 +319,200 @@ readfromvault () {
         vault_file=$1
         [ -f $password_path/$vault_file ] && {
                 cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv 
+        } || {
+                errormsg "ERROR: unable to find file in the vault!!!"
+                [ -x /usr/local/bin/$vault_file ] && {
+                        printmsg "INFO: Removing the link file."
+                        [ -L /usr/local/bin/$vault_file ] && rm -f /usr/local/bin/$vault_file
+                        printmsg "INFO: File removed!!!."
+                } || {
+                        printmsg "INFO: Link file not faund."
+                }
+                exit
+        }
+}
+
+listfromvault () {
+        for file in $password_path/*
+        do
+                basename $file
+        done
+}
+
+
+[ x$1 == "x" ] && {
+        [ -L $0 ] && {
+                oper=read
+        } || {
+                usage
+                exit
+        }
+} || {
+        oper=$1
+	name=$2
+}
+
+case $oper in
+add)
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 
+		(add2vault $name $(readpassword))
+	}
+        ;;
+new)	
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || {
+		add2vault $name $(newpassword)
+	}
+        ;;
+delete)
+        [ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 
+		deletefromvault $name
+	}
+        ;;
+read)
+        readfromvault $(basename $0 | sed 's/^readpass-//') | $COPY_CMD
+        ;;
+list) 
+        listfromvault
+        ;;
+share)
+        [ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 	
+		transferkeysto $name
+	}
+	;;
+importkey)
+	[ -z $name ] && {
+		errormsg "ERROR: $oper needs argument"
+		usage
+		exit;
+	} || { 	
+		importpubkey $name
+	}
+	;;
+exportkey)
+	exportpubkey
+	;;
+listkey)
+	listpubkey
+	;;
+sync)
+	syncvault
+	;;
+init)
+	genkeys
+	;;
+*)
+        usage
+esac
+
+printmsg () {
+        echo -e "${_GREEN}$1${_NORMAL}"
+}
+
+errormsg () {
+        echo -e "${_RED}$1${_NORMAL} " 1>&2
+}
+
+usage () {
+        printmsg "Usage: "
+        printmsg "${_NORMAL}\t$0  init \t\t-${_GREEN}${_BOLD} Initialize the VAULT"
+        printmsg "${_NORMAL}\t$0  add name \t\t-${_GREEN}${_BOLD} Add a password to the VAULT"
+        printmsg "${_NORMAL}\t$0  new name \t\t-${_GREEN}${_BOLD} Generate a new password and store in the VAULT"
+        printmsg "${_NORMAL}\t$0  delete name \t\t-${_GREEN}${_BOLD} Delete the password from the VAULT"
+        printmsg "${_NORMAL}\t$0  list \t\t-${_GREEN}${_BOLD} List the password from the VAULT" 
+        printmsg "${_NORMAL}\t$0  sync \t\t-${_GREEN}${_BOLD} Sync the password VAULT with the readpass-COMMANDs"
+        printmsg "${_NORMAL}\t$0  share user \t\t-${_GREEN}${_BOLD} Share the password for another user (Complete Vault)"
+        printmsg "${_NORMAL}\t$0  importkey file \t\t-${_GREEN}${_BOLD} Import a public for a another user"
+        printmsg "${_NORMAL}\t$0  exportkey \t\t-${_GREEN}${_BOLD} Export your public key to be shared with another user"
+        printmsg "${_NORMAL}\t$0  listkey \t\t-${_GREEN}${_BOLD} List all the keys from the key store"
+        printmsg
+        printmsg "To retrieve the password, type ${_BOLD}\"readpass-[name]\"${_NORMAL}${_GREEN} as the name used in the command in the command prompt."
+        printmsg
+        printmsg
+}
+
+readpassword () {
+	read -p "Enter the password: " -s passwd1
+        echo
+	[ -z $passwd1 ] && {
+		errormsg "ERROR: password cannot be empty"
+		exit
+	}
+        read -p "Repeat the password: " -s passwd2
+        echo 
+
+        [ "x$passwd1" == "x$passwd2" ] && {
+		echo $passwd1
+	} || {
+		errormsg "ERROR: passwords do not match."
+		exit
+	}
+}
+
+newpassword () {
+	openssl rand -base64 10 | cut -d"=" -f 1 
+}
+
+_encrypt () {
+	key=$1
+
+	read passwd4
+	echo $passwd4 | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
+	[ $? -ne 0 ] && {
+		printmsg "ERROR: Failed to add to the vault."
+		exit
+	}}
+
+
+add2vault () {
+	vault_file=$1
+	passwd3=$2
+
+	[ -z $passwd3 ] && exit
+
+	[ -f $password_path/$vault_file ] && {
+		errormsg "ERROR: A file already exist in the vault under the same name."
+		exit
+	}
+	echo $passwd3 | _encrypt $rsa_key_pub > $password_path/$vault_file
+
+	[ -s $password_path/$vault_file ] || {
+		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
+	} && {
+		errormsg "ERROR: creating the vault file."
+	}
+}
+
+deletefromvault () {
+        vault_file=$1
+        [ -f $password_path/$vault_file ] && {
+                rm -fr $password_path/$vault_file 
+                rm -fr /usr/local/bin/readpass-${vault_file}
+        } || {
+                errormsg "ERROR: file not fount in the vault."
+                exit
+        }
+}
+
+readfromvault () {
+        vault_file=$1
+        [ -f $password_path/$vault_file ] && {
+                cat $password_path/$vault_file | openssl base64 -d | openssl rsautl -decrypt -inkey $rsa_key_priv -pass 'cdrom-33'
         } || {
                 errormsg "ERROR: unable to find file in the vault!!!"
                 [ -x /usr/local/bin/$vault_file ] && {
