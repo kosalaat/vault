@@ -85,9 +85,9 @@ listpubkey () {
 
 transferkeysto () {
 	key=$1
-	for file in $keystore_path/*
+	for file in $password_path/*
 	do 
-		readfromvault ${file} | _encrypt $key > ${key}-${file}
+		readfromvault ${file} | _encrypt $keystore_path/aux-$key > ${key}-${file}
 	done
 }
 
