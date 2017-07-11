@@ -1,4 +1,4 @@
-#!/bin/bash  -x
+#!/bin/bash
 ##############################################
 # Written by Kosala Atapattu kosala@kosala.net
 # All right reserved. Distributed under GPL v2,
@@ -54,10 +54,10 @@ genkeys () {
 
 # this subroutine will sync the vault files with recovery commands.
 syncvault () {
-	for file in $password_path/*
+	for file in $(find $password_path -type f)
 	do 
-		[ -z $test ] || {
-			 [ -L /usr/local/bin/readpass-$(basename ${test}) ] || {
+		[ -z $file ] || {
+			 [ -L /usr/local/bin/readpass-$(basename ${file}) ] || {
 				ln -s $0 /usr/local/bin/readpass-$(basename ${file})
 			}
 		}	
@@ -99,126 +99,6 @@ transferkeysto () {
 	do
 		f=$(basename $file)
 		readfromvault ${f} | _encrypt $keystore_path/aux-$key > ${key}-$f
-	done
-}
-
-transferkeysfrom () {
-	file=$1
-	[ -f ${keystore_path}/${file} ] ||  cp $file $keystore_path/. && errormsg "Password already exisit."
-
-	readfromvault $file 2>&1 >/dev/null
-	[ $? -eq 0 ] || {
-		deletefromvault $file
-	}
-}
-
-
-#!/bin/bash  -x
-##############################################
-# Written by Kosala Atapattu kosala@kosala.net
-# All right reserved. Distributed under GPL v2,
-# allowed to modify and redistribute, WETF.
-##############################################
-
-############ Configurables ###################
-
-vault_path=~/vault
-password_path=$vault_path/passwd
-keystore_path=$vault_path/keystore
-
-rsa_key_pub=$keystore_path/mykey.pub
-rsa_key_priv=$keystore_path/mykey.pem
-
-############ Do not change below this line ###
-_RED="\033[31m"
-_GREEN="\033[32m"
-_BOLD="\033[1m"
-_NORMAL="\033[0m"
-
-[ -d $keystore_path ] || mkdir -p $keystore_path
-
-[ -d $password_path ] || mkdir -p $password_path
-
-############ Set the Copy Command ############
-
-case $(uname) in
-Linux)
-        COPY_CMD='xsel --clipboard --input'
-        ;;
-Darwin)
-        COPY_CMD=pbcopy
-        ;;
-*)
-        errormsg "ERROR: Unsupported OS!!"
-        ;;
-esac 
-
-#############################################
-genkeys () {
-	[ -f $rsa_key_priv ] && {
-		[ -f $rsa_key_pub ] || {
-			openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
-		}
-	} || {
-		printmsg "Please enter a passphrase to encrypt your key."
-		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>/dev/null 
-		printmsg "Please enter the same passphrase to generate the public key."
-		openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
-	}
-}
-
-# this subroutine will sync the vault files with recovery commands.
-syncvault () {
-	for file in $password_path/*
-	do 
-		[ -z $test ] || {
-			 [ -L /usr/local/bin/readpass-$(basename ${test}) ] || {
-				ln -s $0 /usr/local/bin/readpass-$(basename ${file})
-			}
-		}	
-	done
-}
-
-importpubkey () {
-	key=$1
-	[ -f $key ] && {
-		[ -f $keystore_path/aux-$(basename $key) ] && {
-			errormsg "ERROR: the same public key file already exists."
-			exit
-		} || {
-			cp $key $keystore_path/aux-$(basename $key)
-		}
-	} || {
-		errormsg "ERROR: the file $key does not exist."
-		exit
-	}
-}
-
-exportpubkey () {
-	cp $rsa_key_pub ./$(uname -n)-${USER}.pub
-	[ $? -eq 0 ] && {
-		printmsg "Public key file created on \033[1m $(uname -n)-${USER}.pub"
-	}
-}
-
-listpubkey () {
-	for file in $keystore_path/aux-*
-	do 
-		[ -f $file ] && echo $(basename $file | sed 's/^aux-//')
-	done
-}
-
-transferkeysto () {
-	key=$1
-	printmsg "Enter the pass phrase: "
-	read -s  passphrase
-
-	[ -d $key ] || mkdir $key
-
-	for file in $password_path/*
-	do
-		f=$(basename $file)
-		readfromvault ${f} $passphrase | _encrypt $keystore_path/aux-$key > ${key}/$f
 	done
 }
 
@@ -290,7 +170,6 @@ _encrypt () {
 		exit
 	}
 }
-
 
 add2vault () {
 	vault_file=$1
