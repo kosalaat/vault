@@ -7,7 +7,7 @@
 
 ############ Configurables ###################
 
-vault_path=~/vault
+vault_path=~/vault2
 password_path=$vault_path/passwd
 keystore_path=$vault_path/keystore
 
@@ -19,6 +19,8 @@ _RED="\033[31m"
 _GREEN="\033[32m"
 _BOLD="\033[1m"
 _NORMAL="\033[0m"
+
+# create the vault paths.
 
 [ -d $keystore_path ] || mkdir -p $keystore_path
 
@@ -41,14 +43,32 @@ esac
 #############################################
 genkeys () {
 	[ -f $rsa_key_priv ] && {
+		printmsg "Please enter a passphrase to encrypt your key: "
+		read -s passphrase1
+		[ -z $passphrase1 ] && {
+			errormsg "ERROR: passphrase cannot be empty!!"
+			exit 1;
+		}
 		[ -f $rsa_key_pub ] || {
-			openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+			openssl rsa -in $rsa_key_priv -passin "pass:$passphrase1" -pubout -out $rsa_key_pub
 		}
 	} || {
-		printmsg "Please enter a passphrase to encrypt your key."
-		openssl genrsa -aes256 -out $rsa_key_priv 2048 2>/dev/null 
-		printmsg "Please enter the same passphrase to generate the public key."
-		openssl rsa -in $rsa_key_priv -pubout -out $rsa_key_pub
+		printmsg "Please enter a passphrase to encrypt your key: "
+		read -s passphrase1
+		[ -z $passphrase1 ] && {
+			errormsg "ERROR: passphrase cannot be empty!!"
+			exit 1;
+		}
+
+		printmsg "Re-enter the passphrase: "
+		read -s passphrase2
+		[ "x$passphrase1" == "x$passphrase2" ] || {
+			errormsg "ERROR: passwords do not match!!"
+			exit 1;
+		}
+
+		openssl genrsa -aes256 -passout "pass:$passphrase1" -out $rsa_key_priv 2048  2>/dev/null 
+		openssl rsa -in $rsa_key_priv -passin "pass:$passphrase1" -pubout -out $rsa_key_pub
 	}
 }
 
