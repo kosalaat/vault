@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 printmsg () {
         echo -e "\033[32m$1\033[0m"
@@ -9,7 +9,7 @@ errormsg () {
 }
 
 [ -x /usr/local/bin/vault ] && {
-	sudo cp /usr/local/bin/vault /usr/local/bin/vault.orig.$(date %s)
+	sudo cp /usr/local/bin/vault /usr/local/bin/vault.orig.$(date +%s)
 } 
 
 sudo cp vault /usr/local/bin/
