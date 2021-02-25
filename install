@@ -9,10 +9,10 @@ errormsg () {
 }
 
 [ -x /usr/local/bin/vault ] && {
-	sudo cp /usr/local/bin/vault /usr/local/bin/vault.orig.$(date %s)
+	cp /usr/local/bin/vault /usr/local/bin/vault.orig.$(date +%s)
 } 
 
-sudo cp vault /usr/local/bin/
+cp vault /usr/local/bin/
 
 /usr/local/bin/vault init
 

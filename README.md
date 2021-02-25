@@ -7,7 +7,7 @@ Vault is a personal password vault based on RSA encryption. The passwords are en
 ```
 $ git clone to https://github.com/kosalaat/vault.git
 $ cd vault
-$ ./install
+$ sudo ./install
 ```
 NOTE: Installation script will initialize the keys as well.
 
