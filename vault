@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 ##############################################
 # Written by Kosala Atapattu kosala@kosala.net
 # All right reserved. Distributed under GPL v2,
@@ -7,7 +7,7 @@
 
 ############ Configurables ###################
 
-vault_path=~/vault2
+vault_path=~/vault
 password_path=$vault_path/passwd
 keystore_path=$vault_path/keystore
 
@@ -43,13 +43,13 @@ esac
 #############################################
 genkeys () {
 	[ -f $rsa_key_priv ] && {
-		printmsg "Please enter a passphrase to encrypt your key: "
-		read -s passphrase1
-		[ -z $passphrase1 ] && {
-			errormsg "ERROR: passphrase cannot be empty!!"
-			exit 1;
-		}
 		[ -f $rsa_key_pub ] || {
+			printmsg "Please enter a passphrase to encrypt your key: "
+			read -s passphrase1
+			[ -z $passphrase1 ] && {
+				errormsg "ERROR: passphrase cannot be empty!!"
+				exit 1;
+			}
 			openssl rsa -in $rsa_key_priv -passin "pass:$passphrase1" -pubout -out $rsa_key_pub
 		}
 	} || {
@@ -115,10 +115,19 @@ listpubkey () {
 
 transferkeysto () {
 	key=$1
+	printmsg "Enter the pass phrase: "
+	read -s passphrase
+	[ -z $passphrase ] && {
+		errormsg "ERROR: passphrase cannot be empty."
+		exit 1
+	}
+
+	[ -d $key ] || mkdir $key
+
 	for file in $password_path/*
 	do
 		f=$(basename $file)
-		readfromvault ${f} | _encrypt $keystore_path/aux-$key > ${key}-$f
+		readfromvault ${f} $passphrase | _encrypt $keystore_path/aux-$key > ${key}/$f
 	done
 }
 
@@ -169,7 +178,7 @@ readpassword () {
         echo 
 
         [ "x$passwd1" == "x$passwd2" ] && {
-		echo $passwd1
+		echo -n $passwd1
 	} || {
 		errormsg "ERROR: passwords do not match."
 		exit
@@ -184,7 +193,7 @@ _encrypt () {
 	key=$1
 
 	read passwd4
-	echo $passwd4 | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
+	echo -n $passwd4 | openssl rsautl -encrypt -pubin -inkey $key | openssl base64 -e 
 	[ $? -ne 0 ] && {
 		printmsg "ERROR: Failed to add to the vault."
 		exit
@@ -201,11 +210,11 @@ add2vault () {
 		errormsg "ERROR: A file already exist in the vault under the same name."
 		exit
 	}
-	echo $passwd3 | _encrypt $rsa_key_pub > $password_path/$vault_file
+	echo -n $passwd3 | _encrypt $rsa_key_pub > $password_path/$vault_file
 
-	[ -s $password_path/$vault_file ] || {
+	[ -s $password_path/$vault_file ] && {
 		ln -s $0 /usr/local/bin/readpass-${vault_file} 2>&1 >/dev/null
-	} && {
+	} || {
 		errormsg "ERROR: creating the vault file."
 		exit
 	}
@@ -235,7 +244,7 @@ readfromvault () {
                         [ -L /usr/local/bin/$vault_file ] && rm -f /usr/local/bin/$vault_file
                         printmsg "INFO: File removed!!!."
                 } || {
-                        printmsg "INFO: Link file not faund."
+                        printmsg "INFO: Link file not found."
                 }
                 exit
         }
